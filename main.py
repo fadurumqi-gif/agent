@@ -33,7 +33,7 @@ def summarize_with_gemini(raw_news):
         raise ValueError("Секрет GEMINI_API_KEY не найден!")
     
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""Ты — профессиональный аналитик нефтегазовой отрасли России. 
 Сделай краткую, структурированную еженедельную сводку на русском языке.
