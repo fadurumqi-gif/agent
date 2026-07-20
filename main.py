@@ -1,7 +1,6 @@
 import os
 import requests
 import feedparser
-import google.generativeai as genai
 from datetime import datetime
 
 RSS_FEEDS = [
@@ -32,8 +31,12 @@ def summarize_with_gemini(raw_news):
     if not GEMINI_API_KEY:
         raise ValueError("Секрет GEMINI_API_KEY не найден!")
     
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Используем прямые HTTP запросы к Gemini API (без библиотеки)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    headers = {
+        "Content-Type": "application/json"
+    }
     
     prompt = f"""Ты — профессиональный аналитик нефтегазовой отрасли России. 
 Сделай краткую, структурированную еженедельную сводку на русском языке.
@@ -46,8 +49,22 @@ def summarize_with_gemini(raw_news):
 Новости для анализа:
 {raw_news}"""
 
-    response = model.generate_content(prompt)
-    return response.text
+    data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+    
+    resp = requests.post(url, headers=headers, json=data)
+    
+    if resp.status_code != 200:
+        raise Exception(f"Gemini API вернул ошибку {resp.status_code}: {resp.text}")
+    
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -64,7 +81,7 @@ def send_to_telegram(message):
         print(f"❌ Ошибка Telegram: {resp.text}")
 
 if __name__ == "__main__":
-    print("📡 Сбор новостей...")
+    print(" Сбор новостей...")
     raw_news = get_latest_news()
     
     print("🤖 Генерация сводки через Google Gemini AI...")
