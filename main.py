@@ -48,7 +48,7 @@ def summarize_openrouter(raw_news):
     prompt = f"Ты — ведущий аналитик нефтегазовой отрасли России. Сделай краткую, структурированную еженедельную сводку на русском языке. Выдели: 1) Главные события, 2) Влияние на рынок/цены, 3) Перспективы. Используй эмодзи и Markdown.\n\nНовости:\n{raw_news}"
     
     data = {
-        "model": "meta-llama/llama-3-8b-instruct:free", # Бесплатная модель
+        "model": "google/gemma-2-9b-it:free", # Бесплатная модель
         "messages": [{"role": "user", "content": prompt}]
     }
     resp = requests.post(url, headers=headers, json=data)
