@@ -1,6 +1,7 @@
 import os
 import requests
 import feedparser
+import html
 from datetime import datetime
 
 RSS_FEEDS = [
@@ -11,7 +12,7 @@ RSS_FEEDS = [
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = "5734651032"
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 def get_latest_news():
     news_items = []
@@ -22,20 +23,23 @@ def get_latest_news():
                 title = entry.get('title', 'Без заголовка')
                 link = entry.get('link', '')
                 published = entry.get('published', '')
-                news_items.append(f"• {title}\n   {published}\n  🔗 {link}")
+                # Экранируем HTML-символы для безопасности
+                safe_title = html.escape(title)
+                news_items.append(f"• <b>{safe_title}</b>\n  📅 {published}\n  🔗 <a href='{link}'>Источник</a>")
         except Exception as e:
             print(f"Ошибка чтения {url}: {e}")
     return "\n\n".join(news_items) if news_items else "Новости не найдены."
 
-def summarize_with_gemini(raw_news):
-    if not GEMINI_API_KEY:
-        raise ValueError("Секрет GEMINI_API_KEY не найден!")
+def summarize_with_ai(raw_news):
+    if not OPENROUTER_API_KEY:
+        return "⚠️ Ошибка: Ключ OPENROUTER_API_KEY не найден в настройках GitHub."
     
-    # Используем прямые HTTP запросы к Gemini API (без библиотеки)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-    
+    url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com",
+        "X-Title": "OilGas Weekly Bot"
     }
     
     prompt = f"""Ты — профессиональный аналитик нефтегазовой отрасли России. 
@@ -44,34 +48,36 @@ def summarize_with_gemini(raw_news):
 1) 📌 Главные события
 2) 📈 Влияние на рынок и цены  
 3) 🔮 Перспективы отрасли
-Используй эмодзи и форматирование Markdown.
+Используй эмодзи и теги HTML (<b>жирный</b>, <i>курсив</i>) для удобства чтения.
 
 Новости для анализа:
 {raw_news}"""
 
-    data = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ]
-    }
+    # Список бесплатных моделей для подстраховки
+    models_to_try = [
+        "meta-llama/llama-3-8b-instruct:free",
+        "qwen/qwen-2.5-7b-instruct:free"
+    ]
     
-    resp = requests.post(url, headers=headers, json=data)
-    
-    if resp.status_code != 200:
-        raise Exception(f"Gemini API вернул ошибку {resp.status_code}: {resp.text}")
-    
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    for model in models_to_try:
+        data = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        resp = requests.post(url, headers=headers, json=data)
+        
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"]
+            
+    # Если ни одна модель не сработала, возвращаем безопасное сообщение
+    return f"⚠️ Сервис ИИ временно перегружен (ошибка {resp.status_code}). Попробуйте запустить вручную позже."
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
-        "parse_mode": "Markdown",
+        "parse_mode": "HTML", # HTML намного стабильнее Markdown для ИИ-текстов
         "disable_web_page_preview": True
     }
     resp = requests.post(url, json=payload)
@@ -81,18 +87,14 @@ def send_to_telegram(message):
         print(f"❌ Ошибка Telegram: {resp.text}")
 
 if __name__ == "__main__":
-    print(" Сбор новостей...")
+    print("📡 Сбор новостей...")
     raw_news = get_latest_news()
     
-    print("🤖 Генерация сводки через Google Gemini AI...")
-    try:
-        summary = summarize_with_gemini(raw_news)
-    except Exception as e:
-        print(f"⚠️ Ошибка ИИ: {e}")
-        summary = f"⚠️ Не удалось сгенерировать сводку.\nДетали: {e}"
+    print("🤖 Генерация сводки через OpenRouter AI...")
+    summary = summarize_with_ai(raw_news)
     
     today = datetime.now().strftime("%d.%m.%Y")
-    final_message = f"🛢 **Еженедельная сводка нефтегазовой отрасли РФ**\n📅 {today}\n\n{summary}"
+    final_message = f"🛢 <b>Еженедельная сводка нефтегазовой отрасли РФ</b>\n📅 {today}\n\n{summary}"
     
     print("📤 Отправка в Telegram...")
     send_to_telegram(final_message)
