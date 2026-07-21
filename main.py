@@ -13,7 +13,7 @@ RSS_FEEDS = {
         "https://www.rosneft.ru/press/news/rss/",
         "https://www.gazprom.ru/press/news/rss/",
         "https://www.lukoil.ru/press/news/rss/"
-    ],
+            ],
     # Цены на нефть
     "oil_prices": [
         "https://www.oilprice.com/rss/main",
@@ -26,6 +26,9 @@ RSS_FEEDS = {
         "https://www.uniprom.ru/press/news/rss/",
         "https://www.sibur.ru/press/news/rss/",
         "https://www.phosagro.ru/press/news/rss/"
+        "https://www.surgutneftegas.ru/press/news/rss/",  # Сургутнефтегаз
+"https://www.tatneft.ru/press/news/rss/",  # Татнефть
+"https://www.eurochem.ru/press/news/rss/",  # ЕвроХим (удобрения)
     ]
 }
 
