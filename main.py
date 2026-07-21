@@ -23,6 +23,7 @@ def get_latest_news():
                 title = entry.get('title', 'Без заголовка')
                 link = entry.get('link', '')
                 published = entry.get('published', '')
+                # Экранируем любые опасные символы в заголовках
                 safe_title = html.escape(title)
                 news_items.append(f"• <b>{safe_title}</b>\n  📅 {published}\n  🔗 <a href='{link}'>Источник</a>")
         except Exception as e:
@@ -30,33 +31,24 @@ def get_latest_news():
     return "\n\n".join(news_items) if news_items else "Новости не найдены."
 
 def get_free_model_from_openrouter():
-    """Динамически получает актуальную бесплатную модель от OpenRouter"""
     try:
-        # Запрашиваем список всех моделей (это не требует ключа)
         resp = requests.get("https://openrouter.ai/api/v1/models", timeout=10)
         if resp.status_code == 200:
             models = resp.json().get("data", [])
-            # Фильтруем только те, что имеют суффикс :free
             free_models = [m["id"] for m in models if m.get("id", "").endswith(":free")]
-            
             if free_models:
-                # Отдаем приоритет самым стабильным и "умным" бесплатным моделям
                 for preferred in ["meta-llama/llama-3-8b-instruct:free", "mistralai/mistral-7b-instruct:free", "google/gemma-2-9b-it:free"]:
                     if preferred in free_models:
                         return preferred
-                # Если ни одной из предпочтительных нет, берем первую попавшуюся бесплатную
                 return free_models[0]
     except Exception as e:
         print(f"Не удалось получить список моделей: {e}")
-    
-    # Фолбэк на самую известную модель, если список получить не удалось
     return "meta-llama/llama-3-8b-instruct:free"
 
 def summarize_with_ai(raw_news):
     if not OPENROUTER_API_KEY:
         return "⚠️ Ошибка: Ключ OPENROUTER_API_KEY не найден в настройках GitHub."
     
-    # Получаем актуальную модель
     model_id = get_free_model_from_openrouter()
     print(f"🤖 Используем модель: {model_id}")
     
@@ -68,13 +60,14 @@ def summarize_with_ai(raw_news):
         "X-Title": "OilGas Weekly Bot"
     }
     
+    # Просим ИИ использовать только безопасные символы, без HTML-тегов
     prompt = f"""Ты — профессиональный аналитик нефтегазовой отрасли России. 
 Сделай краткую, структурированную еженедельную сводку на русском языке.
 Обязательно выдели: 
 1) 📌 Главные события
 2) 📈 Влияние на рынок и цены  
 3) 🔮 Перспективы отрасли
-Используй эмодзи и теги HTML (<b>жирный</b>, <i>курсив</i>) для удобства чтения.
+Используй эмодзи и переносы строк. НЕ используй HTML-теги (вроде <b> или <a>).
 
 Новости для анализа:
 {raw_news}"""
@@ -87,9 +80,17 @@ def summarize_with_ai(raw_news):
     resp = requests.post(url, headers=headers, json=data, timeout=30)
     
     if resp.status_code == 200:
-        return resp.json()["choices"][0]["message"]["content"]
+        try:
+            content = resp.json()["choices"][0]["message"]["content"]
+            # Защита на случай, если ИИ все же выдаст HTML-мусор
+            if "<!doctype" in content.lower() or "<html" in content.lower():
+                return "⚠️ ИИ вернул некорректный формат данных. Повторите попытку позже."
+            return content
+        except Exception:
+            return "⚠️ Не удалось прочитать ответ ИИ."
     else:
-        return f"⚠️ Сервис ИИ недоступен. Модель: {model_id}. Ошибка: {resp.status_code} - {resp.text}"
+        # ВАЖНО: Мы больше НЕ отправляем resp.text в Telegram, чтобы избежать ошибки !doctype
+        return f"⚠️ Сервис ИИ временно недоступен (ошибка {resp.status_code}). Попробуйте запустить вручную позже."
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
