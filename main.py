@@ -23,16 +23,42 @@ def get_latest_news():
                 title = entry.get('title', 'Без заголовка')
                 link = entry.get('link', '')
                 published = entry.get('published', '')
-                # Экранируем HTML-символы для безопасности
                 safe_title = html.escape(title)
                 news_items.append(f"• <b>{safe_title}</b>\n  📅 {published}\n  🔗 <a href='{link}'>Источник</a>")
         except Exception as e:
             print(f"Ошибка чтения {url}: {e}")
     return "\n\n".join(news_items) if news_items else "Новости не найдены."
 
+def get_free_model_from_openrouter():
+    """Динамически получает актуальную бесплатную модель от OpenRouter"""
+    try:
+        # Запрашиваем список всех моделей (это не требует ключа)
+        resp = requests.get("https://openrouter.ai/api/v1/models", timeout=10)
+        if resp.status_code == 200:
+            models = resp.json().get("data", [])
+            # Фильтруем только те, что имеют суффикс :free
+            free_models = [m["id"] for m in models if m.get("id", "").endswith(":free")]
+            
+            if free_models:
+                # Отдаем приоритет самым стабильным и "умным" бесплатным моделям
+                for preferred in ["meta-llama/llama-3-8b-instruct:free", "mistralai/mistral-7b-instruct:free", "google/gemma-2-9b-it:free"]:
+                    if preferred in free_models:
+                        return preferred
+                # Если ни одной из предпочтительных нет, берем первую попавшуюся бесплатную
+                return free_models[0]
+    except Exception as e:
+        print(f"Не удалось получить список моделей: {e}")
+    
+    # Фолбэк на самую известную модель, если список получить не удалось
+    return "meta-llama/llama-3-8b-instruct:free"
+
 def summarize_with_ai(raw_news):
     if not OPENROUTER_API_KEY:
         return "⚠️ Ошибка: Ключ OPENROUTER_API_KEY не найден в настройках GitHub."
+    
+    # Получаем актуальную модель
+    model_id = get_free_model_from_openrouter()
+    print(f"🤖 Используем модель: {model_id}")
     
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -53,32 +79,24 @@ def summarize_with_ai(raw_news):
 Новости для анализа:
 {raw_news}"""
 
-    # Список бесплатных моделей для подстраховки
-    models_to_try = [
-        "meta-llama/llama-3-8b-instruct:free",
-        "qwen/qwen-2.5-7b-instruct:free"
-    "google/gemma-2-9b-it:free",
-        "microsoft/phi-3-mini-128k-instruct:free"
-    ]    
-    for model in models_to_try:
-        data = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-        resp = requests.post(url, headers=headers, json=data)
-        
-        if resp.status_code == 200:
-            return resp.json()["choices"][0]["message"]["content"]
-            
-    # Если ни одна модель не сработала, возвращаем безопасное сообщение
-    return f"⚠️ Сервис ИИ недоступен. Последняя ошибка: {resp.status_code} - {resp.text}"
+    data = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    
+    resp = requests.post(url, headers=headers, json=data, timeout=30)
+    
+    if resp.status_code == 200:
+        return resp.json()["choices"][0]["message"]["content"]
+    else:
+        return f"⚠️ Сервис ИИ недоступен. Модель: {model_id}. Ошибка: {resp.status_code} - {resp.text}"
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
-        "parse_mode": "HTML", # HTML намного стабильнее Markdown для ИИ-текстов
+        "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
     resp = requests.post(url, json=payload)
