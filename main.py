@@ -57,8 +57,9 @@ def summarize_with_ai(raw_news):
     models_to_try = [
         "meta-llama/llama-3-8b-instruct:free",
         "qwen/qwen-2.5-7b-instruct:free"
-    ]
-    
+    "google/gemma-2-9b-it:free",
+        "microsoft/phi-3-mini-128k-instruct:free"
+    ]    
     for model in models_to_try:
         data = {
             "model": model,
@@ -70,7 +71,7 @@ def summarize_with_ai(raw_news):
             return resp.json()["choices"][0]["message"]["content"]
             
     # Если ни одна модель не сработала, возвращаем безопасное сообщение
-    return f"⚠️ Сервис ИИ временно перегружен (ошибка {resp.status_code}). Попробуйте запустить вручную позже."
+    return f"⚠️ Сервис ИИ недоступен. Последняя ошибка: {resp.status_code} - {resp.text}"
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
